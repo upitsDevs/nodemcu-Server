@@ -1,11 +1,24 @@
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
-#include <ESP8266WiFiMulti.h>
+//#include <ESP8266WiFiMulti.h>
 #include <ESP8266mDNS.h>
 #include <ESP8266WebServer.h>
+#include <ESP8266HTTPClient.h>
 #include <WiFiManager.h>          // https://github.com/tzapu/WiFiManager
 #include <ArduinoJson.h>          // https://github.com/bblanchon/ArduinoJson
 #include <FS.h>   // Include the SPIFFS library
+#include <DHT.h>
+
+
+HTTPClient http;
+#define DHTTYPE DHT11
+#define dht_dpin 0
+
+#define RedPin 12
+#define GreenPin 13
+#define BluePin 14
+
+DHT dht(dht_dpin,DHTTYPE);
 
 //ESP8266WiFiMulti wifiMulti;     // Create an instance of the ESP8266WiFiMulti class, called 'wifiMulti'
 
@@ -26,8 +39,7 @@ char output[2] = "5";
 bool shouldSaveConfig = true;
 
 void handleRoot();
-void handleRoom1();
-void handleRoom2();
+
 
 //callback notifying us of the need to save config
 void saveConfigCallback () {
@@ -35,26 +47,107 @@ void saveConfigCallback () {
   shouldSaveConfig = true;
 }
 
+#ifndef pinHandler_h
+#define pinHandler_h
+class pinHandler {
+    public:
+      pinHandler(int pin);
+      void toggle();
+      void status();
+    private:
+      int _pin;
+      int _status;
+  };
+#endif
+pinHandler::pinHandler(int pin) {
+  pinMode(pin,OUTPUT);
+  _pin = pin;
+};
+void pinHandler::toggle() {
+      digitalWrite(_pin,!digitalRead(_pin));      // Change the state of the LED
+      server.send(200, "application/json", "{'status' = 'success'}");                         
+      server.sendHeader("Access-Control-Max-Age", "10000");
+      server.sendHeader("Access-Control-Allow-Methods", "POST,GET,OPTIONS");
+      server.sendHeader("Access-Control-Allow-Origin", "*");
+      Serial.println(WiFi.localIP());
+      Serial.println(WiFi.macAddress());     
+};
+void pinHandler::status(){
+      bool roomStat = digitalRead(_pin);
+      if (roomStat == 1) {
+        server.sendHeader("Access-Control-Max-Age", "10000");
+        server.sendHeader("Access-Control-Allow-Methods", "POST,GET,OPTIONS");
+        server.sendHeader("Access-Control-Allow-Origin", "*");
+        server.send(200, "application/json", "{'status': 1}");                         
+        }else{
+        server.sendHeader("Access-Control-Max-Age", "10000");
+        server.sendHeader("Access-Control-Allow-Methods", "POST,GET,OPTIONS");
+        server.sendHeader("Access-Control-Allow-Origin", "*");
+        server.send(200, "application/json", "{'status': 0}");     
+      }      
+};
+
+pinHandler port1(4);
+pinHandler port2(5);
 
 String getContentType(String filename); // convert the file extension to the MIME type
 bool handleFileRead(String path);       // send the right file to the client (if it exists)
 void handleRoom1() {                          // If a POST request is made to URI /LED
-      digitalWrite(4,!digitalRead(4));      // Change the state of the LED
-      server.sendHeader("Location","/");        // Add a header to respond with a new location for the browser to go to the home page again
-      server.send(303);                         // Send it back to the browser with an HTTP status 303 (See Other) to redirect
-    }
-  void handleRoom2() {                          // If a POST request is made to URI /LED
-      digitalWrite(5,!digitalRead(5));      // Change the state of the LED
-      server.sendHeader("Location","/");        // Add a header to respond with a new location for the browser to go to the home page again
-      server.send(303);                         // Send it back to the browser with an HTTP status 303 (See Other) to redirect
+      port1.toggle();         
+   }
+void handleRoom2() {                          // If a POST request is made to URI /LED
+      port2.toggle();                      
+   }
+bool statusRoom1(){
+      port1.status();
+   }
+bool statusRoom2(){
+      port2.status();
+   }   
+bool ColorPicker(){      
+      int red = server.arg("red").toInt();      
+      int green = server.arg("green").toInt();      
+      int blue = server.arg("blue").toInt();      
+      setColor(red,green,blue);
+  }
+void readSensorData(){
+    StaticJsonBuffer<256> jsonBuffer;
+    // Create the root object    
+    JsonObject& root = jsonBuffer.createObject();    
+    root["tempreture"] = dht.readTemperature();
+    root["humidity"] = dht.readHumidity();
+    String json;
+    root.prettyPrintTo(json);
+    server.sendHeader("Access-Control-Max-Age", "10000");
+    server.sendHeader("Access-Control-Allow-Methods", "POST,GET,OPTIONS");
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(200,"application/json",json);      
+  }  
+void setColor(int red, int green, int blue){
+      analogWrite(RedPin,red);
+      analogWrite(GreenPin,green);
+      analogWrite(BluePin,blue);
+      server.sendHeader("Access-Control-Max-Age", "10000");
+      server.sendHeader("Access-Control-Allow-Methods", "POST,GET,OPTIONS");
+      server.sendHeader("Access-Control-Allow-Origin", "*");
+      server.send(200, "application/json", "{'status': 'Success'}");                         
+  }
+ void pingDevice(){
+      server.sendHeader("Access-Control-Max-Age", "10000");
+      server.sendHeader("Access-Control-Allow-Methods", "POST,GET,OPTIONS");
+      server.sendHeader("Access-Control-Allow-Origin", "*");
+      server.send(200, "application/json", "{'status': 'connected'}");                         
     }
 void setup() {
   Serial.begin(115200);         // Start the Serial communication to send messages to the computer
+  dht.begin();
   delay(10);
   Serial.println('\n');
   pinMode(4,OUTPUT);
   pinMode(5,OUTPUT);
-
+  pinMode(RedPin,OUTPUT);
+  pinMode(GreenPin,OUTPUT);
+  pinMode(BluePin,OUTPUT);
   Serial.println("Connecting ...");
   int i = 0;
 
@@ -64,7 +157,7 @@ void setup() {
   Serial.print("IP address:\t");
   Serial.println(WiFi.localIP());           // Send the IP address of the ESP8266 to the computer
 
-  if (MDNS.begin("esp8266")) {              // Start the mDNS responder for esp8266.local
+  if (MDNS.begin("upitsIOT")) {              // Start the mDNS responder for esp8266.local
     Serial.println("mDNS responder started");
   } else {
     Serial.println("Error setting up MDNS responder!");
@@ -72,7 +165,6 @@ void setup() {
 
   //read configuration from FS json
   Serial.println("mounting FS...");
-
   if (SPIFFS.begin()) {
     Serial.println("mounted file system");
     if (SPIFFS.exists("/config.json")) {
@@ -108,7 +200,7 @@ void setup() {
   // Local intialization. Once its business is done, there is no need to keep it around
   WiFiManager wifiManager;
 
-  wifiManager.autoConnect("AutoConnectAP");
+  wifiManager.autoConnect("upitsIOT");
   //set config save notify callback
   wifiManager.setSaveConfigCallback(saveConfigCallback);
   
@@ -123,8 +215,13 @@ void setup() {
       server.send(404, "text/plain", "404: Not Found"); // otherwise, respond with a 404 (Not Found) error
   });
 
-server.on("/room1", HTTP_GET, handleRoom1);
-server.on("/room2", HTTP_GET, handleRoom2);
+server.on("/port1", HTTP_GET, handleRoom1);
+server.on("/port1/status", HTTP_GET, statusRoom1);
+server.on("/port2", HTTP_GET, handleRoom2);
+server.on("/port2/status", HTTP_GET, statusRoom2);
+server.on("/RGB", HTTP_POST, ColorPicker);
+server.on("/sensor/1", HTTP_GET, readSensorData);
+server.on("/ping", HTTP_GET, pingDevice);
 
 
   //save the custom parameters to FS
@@ -147,10 +244,45 @@ server.on("/room2", HTTP_GET, handleRoom2);
   
   server.begin();                           // Actually start the server
   Serial.println("HTTP server started");
+  if (WiFi.status() == WL_CONNECTED) {  //Wait for the WiFI connection completion     
+    Serial.println("Loggin Device Into Cloud");
+    http.begin("http://192.168.2.111:8080/api/v1/deviceLog");
+    http.addHeader("Content-Type", "application/json");
+    StaticJsonBuffer<256> jsonBuffer;
+    // Create the root object    
+    JsonObject& logPost = jsonBuffer.createObject();    
+    logPost["local_ip"] = WiFi.localIP().toString() ;     
+    logPost["mac_address"] = TheMac();
+    String json;
+    logPost.prettyPrintTo(json); 
+    int httpCode = http.POST(json);
+    String payload = http.getString();
+    http.end();
+    Serial.println(json);
+  }
 }
 
+
+//String getMacAddress() {
+//  byte mac[6];
+//  WiFi.macAddress(mac);
+//  String cMac = "";
+//  for (int i = 0; i < 6; ++i) {
+//  cMac += String(mac[i],HEX);
+//  if(i<5)
+//  cMac += ":";
+//  }
+//  cMac.toUpperCase();
+//  return cMac;
+//}
+
+String TheMac() {
+  String s = WiFi.macAddress();
+  return s;
+  }
+
 void loop(void) {
-  
+    
   server.handleClient();
 }
 

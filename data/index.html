@@ -57,8 +57,11 @@
           </ul>
           <div class="row">
             <div class="col-lg-12">
-              <a href="/room1" class='btn btn-success' id='numSwitchOn'>Room 1</a>
-              <a href="/room2" class='btn btn-danger' id='numSwitchOff'>Room 2</a>
+              <a href="/room1" class='btn btn-success' id='Room1'>Room 1</a>
+              <a href="/room2" class='btn btn-danger' id='Room2'>Room 2</a>
+            </div>
+            <div class="col-lg-12">
+              <input type="color" name="color" id="color">
             </div>
           </div>
         </div>
@@ -68,18 +71,41 @@
     <!-- Bootstrap core JavaScript -->
     <script src="jquery.min.js"></script>
     <script src="bootstrap.bundle.min.js"></script>
-    <!-- <script type="text/javascript">
+    <script type="text/javascript">
         $(document).ready(function(){
-          $('#numSwitchOn').on('click', function(e){
+          $('#Room1').on('click', function(e){
             e.preventDefault();
-            alert('Clicked on');
+            $.get('./room1');
           });
-          $('#numSwitchOff').on('click', function(e){
+          $('#Room2').on('click', function(e){
             e.preventDefault();
-            alert('Clicked off');
-          })
+            $.get('./room2');
+          });
+          $('#color').on('change', function(e){
+              e.preventDefault();
+              var hexColor = $('#color').val().match(/[A-Za-z0-9]{2}/g);
+              var value = hexColor.map(function(v) { return parseInt(v, 16) });
+              console.log("rgb(" + value.join(",") + ")");
+              var red = value[0];
+              var green = value[1] ;
+              var blue =  value[2] ;
+              $.ajax({
+                  url: 'http://192.168.2.108/RGB',
+                  dataType: 'text',
+                  type: 'post',
+                  contentType: 'application/x-www-form-urlencoded',
+                  data: {
+                      "red" : red,
+                      "green" : green,
+                      "blue" : blue,
+                  },
+                  success: function (data) {
+                      console.info(data);
+                  }
+              });
+          });
         });
-    </script> -->
+    </script>
   </body>
 
 </html>
